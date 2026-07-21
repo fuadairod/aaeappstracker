@@ -163,6 +163,21 @@ button,select,input,textarea{font-family:inherit;font-size:inherit;color:inherit
 .empty-note{padding:26px 18px;text-align:center;color:var(--ink-2);font-size:.8rem}
 .edit-link{color:var(--plum);cursor:pointer;font-size:.7rem;text-decoration:underline}
 
+/* ============ ACTION ITEMS ============ */
+.ai-table{width:100%;border-collapse:collapse}
+.ai-table th{font-family:'IBM Plex Mono',monospace;font-size:.62rem;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-2);text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);background:#faf7fa;white-space:nowrap}
+.ai-table td{padding:10px 12px;border-bottom:1px solid #f0eaf0;font-size:.79rem;vertical-align:top}
+.ai-table tr:last-child td{border-bottom:none}
+.ai-table .ai-desc{font-weight:600;color:var(--ink)}
+.ai-table .ai-link{font-size:.68rem;color:var(--ink-2);margin-top:2px}
+.ai-pic{display:inline-flex;align-items:center;gap:6px;font-weight:600;font-size:.76rem}
+.ai-pic .av{width:22px;height:22px;border-radius:99px;background:var(--plum-soft);color:var(--plum);display:flex;align-items:center;justify-content:center;font-size:.64rem;font-weight:700;flex:none}
+.ai-due{font-family:'IBM Plex Mono',monospace;font-size:.73rem;white-space:nowrap}
+.ai-due.over{color:#9c2626;font-weight:600}
+.ai-due.soon{color:#8a5c00;font-weight:600}
+.ai-overchip{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:.6rem;background:var(--cx-bg);color:#9c2626;border-radius:99px;padding:1px 7px;margin-left:5px}
+.ai-actions{white-space:nowrap;text-align:right}
+
 .charts{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:center;padding:16px}
 .donut-wrap{position:relative;width:168px;height:168px;margin:0 auto}
 .donut-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
@@ -359,6 +374,23 @@ footer{padding:10px 28px 26px;font-family:'IBM Plex Mono',monospace;font-size:.6
 
 <div class="log-wrap">
   <div class="panel">
+    <div class="panel-head">
+      <h2>Action Items</h2>
+      <span class="hint">Open actions, owners &amp; target dates</span>
+      <div class="filters" style="margin-left:auto">
+        <select id="aiFilter">
+          <option value="">All statuses</option>
+          <option>Open</option><option>In Progress</option><option>Blocked</option><option>Completed</option><option>Cancelled</option>
+        </select>
+        <button class="icon-btn editor-up" id="aiAddBtn" style="background:var(--plum);border-color:var(--plum)">+ Add Action</button>
+      </div>
+    </div>
+    <div id="aiBody"></div>
+  </div>
+</div>
+
+<div class="log-wrap">
+  <div class="panel">
     <div class="panel-head"><h2>Activity Log</h2><span class="hint">Who changed what, and when</span></div>
     <div class="log-scroll"><table class="log-table"><tbody id="logBody"></tbody></table></div>
   </div>
@@ -431,6 +463,33 @@ footer{padding:10px 28px 26px;font-family:'IBM Plex Mono',monospace;font-size:.6
       <button class="btn primary" id="nuAdd" style="align-self:flex-start">Add User</button>
     </div>
     <div class="modal-foot"><button class="btn" id="usersClose">Close</button></div>
+  </div>
+</div>
+
+<!-- ================= ACTION ITEM MODAL ================= -->
+<div class="modal-back" id="aiBack">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="aiModalTitle">✚ New Action Item</h3>
+      <div class="task-nm">Assign an owner, target date &amp; status</div>
+    </div>
+    <div class="modal-body">
+      <div class="field"><label>Description *</label><textarea id="aiDesc" placeholder="e.g. Obtain sandbox credentials from vendor and confirm access…"></textarea></div>
+      <div class="field-row">
+        <div class="field"><label>PIC (person in charge) *</label><input type="text" id="aiPic" placeholder="e.g. Aiman"></div>
+        <div class="field"><label>Target completion</label><input type="date" id="aiDue"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Status</label><select id="aiStatus"><option>Open</option><option>In Progress</option><option>Blocked</option><option>Completed</option><option>Cancelled</option></select></div>
+        <div class="field"><label>Related workpack / task (optional)</label><select id="aiLink"></select></div>
+      </div>
+      <div class="field"><label>Notes (optional)</label><textarea id="aiNotes" placeholder="Any extra context, dependencies or next step…"></textarea></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn danger" id="aiDelete" style="margin-right:auto;display:none">Delete</button>
+      <button class="btn" id="aiCancel">Cancel</button>
+      <button class="btn primary" id="aiSave">Save Action</button>
+    </div>
   </div>
 </div>
 
@@ -539,7 +598,7 @@ const BASELINE_END=D('21-Dec-26');
 let TOTAL_COST=0;
 
 /* ================= STATE + STORAGE ================= */
-let state={statuses:{},delays:{},collapsed:{},edits:{},users:[],log:[]};
+let state={statuses:{},delays:{},collapsed:{},edits:{},actions:[],users:[],log:[]};
 const STORE_KEY='airod_pm_state_v2';
 let LAST_SYNC=null;
 async function loadState(){
@@ -893,7 +952,122 @@ function refresh(){
     `<tr><td class="t">${new Date(e.ts).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</td>
      <td class="u">${esc(e.u)}</td><td>${esc(e.a)}</td></tr>`).join('')
     :`<tr><td style="padding:18px;text-align:center;color:var(--ink-2)">No activity yet.</td></tr>`;
+
+  renderActions();
 }
+
+/* ================= ACTION ITEMS ================= */
+const AI_SKEY={'Open':'ns','In Progress':'ip','Blocked':'dl','Completed':'cp','Cancelled':'cx'};
+function aiInitials(name){
+  const p=String(name||'').trim().split(/\s+/).filter(Boolean);
+  if(!p.length)return'?';
+  return((p[0][0]||'')+(p.length>1?p[p.length-1][0]:'')).toUpperCase();
+}
+function renderActions(){
+  const wrap=document.getElementById('aiBody');
+  const fSt=document.getElementById('aiFilter').value;
+  let items=(state.actions||[]).slice();
+  // sort: active first (by due date, undated last), completed/cancelled at bottom
+  const done=s=>s==='Completed'||s==='Cancelled';
+  items.sort((a,b)=>{
+    if(done(a.status)!==done(b.status))return done(a.status)?1:-1;
+    const da=a.due||'9999',db=b.due||'9999';
+    return da<db?-1:da>db?1:0;
+  });
+  const shown=items.filter(a=>!fSt||a.status===fSt);
+  const editable=canEdit();
+  if(!shown.length){
+    wrap.innerHTML=`<div class="empty-note">${(state.actions||[]).length?'No action items match this filter.':'No action items yet.'+(editable?' Click <b>+ Add Action</b> to create one.':'')}</div>`;
+    return;
+  }
+  const todayISO=iso(DATA_DATE);
+  const rows=shown.map(a=>{
+    const k=AI_SKEY[a.status]||'ns';
+    let dueCls='',overChip='';
+    if(a.due&&!done(a.status)){
+      const dd=new Date(a.due+'T00:00:00');
+      const diff=Math.round((dd-DATA_DATE)/DAY_MS);
+      if(diff<0){dueCls='over';overChip=`<span class="ai-overchip">${-diff}d overdue</span>`;}
+      else if(diff<=3){dueCls='soon';}
+    }
+    const link=a.link&&byId[a.link]?`<div class="ai-link">↳ ${esc(byId[a.link].name)}</div>`:'';
+    const notes=a.notes?`<div class="ai-link" style="color:#0e6b3a">✎ ${esc(a.notes)}</div>`:'';
+    return`<tr>
+      <td><div class="ai-desc">${esc(a.desc)}</div>${link}${notes}</td>
+      <td><span class="ai-pic"><span class="av">${esc(aiInitials(a.pic))}</span>${esc(a.pic||'—')}</span></td>
+      <td><span class="ai-due ${dueCls}">${a.due?fmtY(new Date(a.due+'T00:00:00')):'—'}</span>${overChip}</td>
+      <td><span class="status-pill st-${k}">${esc(a.status)}</span></td>
+      <td class="ai-actions">${editable?`<span class="edit-link" data-aiedit="${a.id}">edit</span>`:''}</td>
+    </tr>`;
+  }).join('');
+  wrap.innerHTML=`<table class="ai-table"><thead><tr>
+    <th>Description</th><th>PIC</th><th>Target</th><th>Status</th><th></th>
+  </tr></thead><tbody>${rows}</tbody></table>`;
+  if(editable)wrap.querySelectorAll('[data-aiedit]').forEach(el=>el.addEventListener('click',()=>openAction(el.dataset.aiedit)));
+}
+
+/* ------- Action item modal ------- */
+let aiEditingId=null;
+function aiPopulateLinkOptions(){
+  const sel=document.getElementById('aiLink');
+  let html='<option value="">— none —</option>';
+  groups.forEach(g=>{
+    html+=`<option value="${g.id}">${esc(g.name)}</option>`;
+    g.children.forEach(c=>{html+=`<option value="${c.id}">&nbsp;&nbsp;• ${esc(c.name)}</option>`;});
+  });
+  sel.innerHTML=html;
+}
+function openAction(id){
+  if(!canEdit())return;
+  aiEditingId=id||null;
+  aiPopulateLinkOptions();
+  const a=id?(state.actions||[]).find(x=>x.id===id):null;
+  document.getElementById('aiModalTitle').textContent=a?'✎ Edit Action Item':'✚ New Action Item';
+  document.getElementById('aiDesc').value=a?a.desc:'';
+  document.getElementById('aiPic').value=a?a.pic:'';
+  document.getElementById('aiDue').value=a?(a.due||''):'';
+  document.getElementById('aiStatus').value=a?a.status:'Open';
+  document.getElementById('aiLink').value=a?(a.link||''):'';
+  document.getElementById('aiNotes').value=a?(a.notes||''):'';
+  document.getElementById('aiDelete').style.display=a?'':'none';
+  document.getElementById('aiBack').classList.add('open');
+}
+document.getElementById('aiAddBtn').addEventListener('click',()=>openAction(null));
+document.getElementById('aiFilter').addEventListener('change',renderActions);
+document.getElementById('aiSave').addEventListener('click',()=>{
+  const desc=document.getElementById('aiDesc').value.trim();
+  const pic=document.getElementById('aiPic').value.trim();
+  if(!desc||!pic){alert('Please enter at least a description and a PIC.');return;}
+  const rec={
+    desc,pic,
+    due:document.getElementById('aiDue').value||'',
+    status:document.getElementById('aiStatus').value,
+    link:document.getElementById('aiLink').value||'',
+    notes:document.getElementById('aiNotes').value.trim(),
+  };
+  state.actions=state.actions||[];
+  if(aiEditingId){
+    const it=state.actions.find(x=>x.id===aiEditingId);
+    if(it){Object.assign(it,rec);addLog(`Updated action "${desc}" (PIC ${pic}, ${rec.status})`);}
+  }else{
+    rec.id='a'+Date.now().toString(36)+Math.floor(Math.random()*1000);
+    state.actions.push(rec);
+    addLog(`Added action "${desc}" (PIC ${pic}, ${rec.status})`);
+  }
+  document.getElementById('aiBack').classList.remove('open');
+  saveState();refresh();
+});
+document.getElementById('aiDelete').addEventListener('click',()=>{
+  if(!aiEditingId)return;
+  const it=(state.actions||[]).find(x=>x.id===aiEditingId);
+  if(!confirm('Delete this action item?'))return;
+  state.actions=(state.actions||[]).filter(x=>x.id!==aiEditingId);
+  addLog(`Deleted action "${it?it.desc:aiEditingId}"`);
+  document.getElementById('aiBack').classList.remove('open');
+  saveState();refresh();
+});
+document.getElementById('aiCancel').addEventListener('click',()=>document.getElementById('aiBack').classList.remove('open'));
+document.getElementById('aiBack').addEventListener('click',e=>{if(e.target.id==='aiBack')document.getElementById('aiBack').classList.remove('open');});
 
 /* ================= DELAY MODAL ================= */
 let modalTask=null;
@@ -1046,7 +1220,7 @@ document.getElementById('importFile').addEventListener('change',e=>{
     try{
       const s=JSON.parse(r.result);
       if(typeof s!=='object')throw 0;
-      state=Object.assign({statuses:{},delays:{},collapsed:{},edits:{},users:[],log:[]},s);
+      state=Object.assign({statuses:{},delays:{},collapsed:{},edits:{},actions:[],users:[],log:[]},s);
       addLog('Imported dashboard state from file');
       saveState();refresh();
       alert('State imported.');
